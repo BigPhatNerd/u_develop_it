@@ -2,6 +2,7 @@ const express = require("express");
 const PORT = process.env.PORT || 3001;
 const app = express();
 const sqlite3 = require('sqlite3').verbose();
+const inputCheck = require('./utils/inputCheck');
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -13,8 +14,57 @@ const db = new sqlite3.Database('./db/election.db', err => {
     console.log('Connected to the election database.');
 })
 
+app.get('/api/parties', (req, res) => {
+    const sql = `SELECT * FROM parties`;
+    const params = [];
+    db.all(sql, params, (err, rows) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return
+        }
+        res.json({
+            message: "success",
+            data: rows
+        });
+    });
+});
+
+app.get('/api/party/:id', (req, res) => {
+    const sql = `SELECT * FROM  parties WHERE id= ?`;
+    const params = [req.params.id];
+    db.get(sql, params, (err, rows) => {
+        if (err) {
+            res.status(400).json({ error: err.message });
+            return;
+        }
+        res.json({
+            message: "success",
+            data: rows
+        });
+    });
+});
+
+app.delete('/api/party/:id', (req, res) => {
+    const sql = `DELETE FROM parties WHERE id = ?`;
+    const params = [req.params.id];
+    db.run(sql, params, function(err, result) {
+        if (err) {
+            res.status(400).json({ error: err.message });
+            return;
+        }
+        res.json({
+            message: "successfully deleted",
+            changes: this.changes
+        })
+    })
+})
+
 app.get('/api/candidates', (req, res) => {
-    const sql = `SELECT * FROM candidates`;
+    const sql = `SELECT candidates.*, parties.name
+    AS party_name
+    FROM candidates
+    LEFT JOIN parties
+    ON candidates.party_id = parties.id`;
     const params = [];
     db.all(sql, params, (err, rows) => {
         if (err) {
@@ -29,7 +79,11 @@ app.get('/api/candidates', (req, res) => {
 });
 
 app.get('/api/candidates/:id', (req, res) => {
-    const sql = `SELECT * FROM candidates WHERE id=?`;
+    const sql = `SELECT candidates.*, parties.name
+    AS party_name 
+    FROM candidates
+    LEFT JOIN parties
+    ON candidates.party_id = parties.id`;
     const params = [req.params.id];
     db.get(sql, params, (err, row) => {
         if (err) {
@@ -65,6 +119,28 @@ app.post('/api/candidate', (req, res) => {
         return
     }
 })
+
+app.put('/api/candidate/:id', (req, res) => {
+    const errors = inputCheck(req.body, 'party_id');
+    if (errors) {
+        res.status(400).json({ error: errors });
+        return;
+    }
+    const sql = `UPDATE candidates SET party_id = ?
+    WHERE id = ?`;
+    const params = [req.body, req.params.id];
+    db.run(sql, params, function(err, result) {
+        if (err) {
+            res.status(400).json({ error: err.message });
+            return;
+        }
+        res.json({
+            message: 'success',
+            data: req.body,
+            changes: this.changes
+        });
+    });
+});
 
 app.use((req, res) => {
     res.status(404).end();
